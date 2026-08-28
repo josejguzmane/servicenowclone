@@ -1,9 +1,16 @@
+import { resolve } from 'node:path';
 import { z } from 'zod';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.string().min(1),
+
+  STORAGE_DRIVER: z.enum(['json']).default('json'),
+  DATA_FILE: z.string().default('data/servicedesk.json'),
+  SEED_FILE: z.string().default('data/seed.json'),
+  // Unused by the JSON driver; kept so the database driver can be enabled
+  // without reshaping configuration.
+  DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
@@ -21,7 +28,12 @@ const schema = z.object({
 export type AppConfig = {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
-  databaseUrl: string;
+  storage: {
+    driver: 'json';
+    dataFile: string;
+    seedFile: string;
+  };
+  databaseUrl: string | null;
   redisUrl: string;
   jwt: {
     accessSecret: string;
@@ -43,7 +55,12 @@ export function loadConfiguration(): AppConfig {
   return {
     nodeEnv: env.NODE_ENV,
     port: env.API_PORT,
-    databaseUrl: env.DATABASE_URL,
+    storage: {
+      driver: env.STORAGE_DRIVER,
+      dataFile: resolve(process.cwd(), env.DATA_FILE),
+      seedFile: resolve(process.cwd(), env.SEED_FILE),
+    },
+    databaseUrl: env.DATABASE_URL ?? null,
     redisUrl: env.REDIS_URL,
     jwt: {
       accessSecret: env.JWT_ACCESS_SECRET,

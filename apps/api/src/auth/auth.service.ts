@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -8,7 +9,13 @@ import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import type { Actor, SessionResponse } from '@servicedesk/shared';
 import { AuditService } from '../audit/audit.service';
-import { PrismaService } from '../prisma/prisma.service';
+import type { CustomerAccount } from '../storage/entities';
+import {
+  CUSTOMER_ACCOUNT_REPOSITORY,
+  USER_REPOSITORY,
+  type CustomerAccountRepository,
+  type UserRepository,
+} from '../storage/repositories';
 import { ActorService } from '../users/actor.service';
 import { TokenService } from './token.service';
 import type { LoginDto, RegisterDto } from './dto';
@@ -29,7 +36,8 @@ const ARGON2_OPTIONS: argon2.Options = {
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(CUSTOMER_ACCOUNT_REPOSITORY) private readonly accounts: CustomerAccountRepository,
     private readonly tokens: TokenService,
     private readonly actors: ActorService,
     private readonly audit: AuditService,
@@ -42,28 +50,21 @@ export class AuthService {
     }
 
     const email = normalizeEmail(dto.email);
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.users.findByEmail(email);
     if (existing) {
       // Do not disclose whether the address is already registered.
       throw new BadRequestException('Unable to register with these details');
     }
 
-    const endUserRole = await this.prisma.role.findUnique({ where: { key: 'end_user' } });
-    if (!endUserRole) {
-      throw new Error('Role "end_user" is missing; run the database seed');
-    }
-
     const account = await this.resolveAccountForDomain(email, dto.company);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        name: dto.name.trim(),
-        kind: 'external',
-        customerAccountId: account?.id ?? null,
-        passwordHash: await argon2.hash(dto.password, ARGON2_OPTIONS),
-        roles: { create: { roleId: endUserRole.id } },
-      },
+    const user = await this.users.create({
+      email,
+      name: dto.name.trim(),
+      kind: 'external',
+      customerAccountId: account?.id ?? null,
+      passwordHash: await argon2.hash(dto.password, ARGON2_OPTIONS),
+      roleKeys: ['end_user'],
     });
 
     await this.audit.recordSafely({
@@ -82,7 +83,7 @@ export class AuthService {
 
   async login(dto: LoginDto, context: AuthContext): Promise<SessionResponse> {
     const email = normalizeEmail(dto.email);
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.users.findByEmail(email);
 
     // Always run a verification so timing does not reveal whether the account exists.
     const hash = user?.passwordHash ?? DUMMY_HASH;
@@ -104,7 +105,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await this.users.recordLogin(user.id, new Date());
     await this.audit.recordSafely({
       entityType: 'user',
       entityId: user.id,
@@ -156,13 +157,16 @@ export class AuthService {
   }
 
   /** Links a self-registering contact to the customer account owning their email domain. */
-  private async resolveAccountForDomain(email: string, company?: string) {
+  private async resolveAccountForDomain(
+    email: string,
+    company?: string,
+  ): Promise<CustomerAccount | null> {
     const domain = email.split('@')[1];
     if (!domain) return null;
-    const existing = await this.prisma.customerAccount.findUnique({ where: { domain } });
+    const existing = await this.accounts.findByDomain(domain);
     if (existing) return existing.isActive ? existing : null;
     if (!company) return null;
-    return this.prisma.customerAccount.create({ data: { name: company.trim(), domain } });
+    return this.accounts.create({ name: company.trim(), domain });
   }
 }
 

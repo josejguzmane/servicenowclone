@@ -8,23 +8,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: servicedesk
-          POSTGRES_PASSWORD: servicedesk
-          POSTGRES_DB: servicedesk
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U servicedesk"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
-      DATABASE_URL: postgresql://servicedesk:servicedesk@localhost:5432/servicedesk?schema=public
-      REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci-access-secret-that-is-long-enough-000
       JWT_REFRESH_SECRET: ci-refresh-secret-that-is-long-enough-00
     steps:
@@ -41,5 +25,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm -r typecheck
       - run: pnpm test
-      - run: pnpm --filter @servicedesk/api db:deploy
       - run: pnpm build
+      # The committed seed must match the generator, so a schema change cannot
+      # leave the demo dataset stale.
+      - run: pnpm seed:build && git diff --exit-code apps/api/data/seed.json

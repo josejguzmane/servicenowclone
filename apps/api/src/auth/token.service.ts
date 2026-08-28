@@ -1,9 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes } from 'node:crypto';
 import type { AppConfig } from '../config/configuration';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  REFRESH_TOKEN_REPOSITORY,
+  USER_REPOSITORY,
+  type RefreshTokenRepository,
+  type UserRepository,
+} from '../storage/repositories';
 
 export interface AccessTokenPayload {
   sub: string;
@@ -23,7 +28,8 @@ const REFRESH_BYTES = 48;
 export class TokenService {
   constructor(
     private readonly jwt: JwtService,
-    private readonly prisma: PrismaService,
+    @Inject(REFRESH_TOKEN_REPOSITORY) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     private readonly config: ConfigService,
   ) {}
 
@@ -45,14 +51,12 @@ export class TokenService {
     // Opaque, single-use refresh token: only its hash is stored, so a database
     // read cannot mint sessions.
     const refreshToken = randomBytes(REFRESH_BYTES).toString('base64url');
-    await this.prisma.refreshToken.create({
-      data: {
-        userId: payload.sub,
-        tokenHash: hashToken(refreshToken),
-        expiresAt: new Date(Date.now() + durationToMs(refreshTtl)),
-        ip: context.ip,
-        userAgent: context.userAgent,
-      },
+    await this.refreshTokens.create({
+      userId: payload.sub,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + durationToMs(refreshTtl)),
+      ip: context.ip,
+      userAgent: context.userAgent,
     });
 
     return { accessToken, refreshToken, expiresIn: Math.floor(durationToMs(accessTtl) / 1000) };
@@ -68,44 +72,38 @@ export class TokenService {
     }
   }
 
-  /** Rotates a refresh token, revoking the presented one in the same transaction. */
+  /** Rotates a refresh token, revoking the presented one so it is single-use. */
   async rotate(
     refreshToken: string,
     context: { ip?: string; userAgent?: string } = {},
   ): Promise<IssuedTokens & { userId: string }> {
-    const stored = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash: hashToken(refreshToken) },
-      include: { user: true },
-    });
+    const stored = await this.refreshTokens.findByHash(hashToken(refreshToken));
+    const now = new Date();
 
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date() || !stored.user.isActive) {
+    if (!stored || stored.revokedAt || new Date(stored.expiresAt) < now) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() },
-    });
+    const user = await this.users.findById(stored.userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    await this.refreshTokens.revokeById(stored.id, now);
 
     const tokens = await this.issue(
-      { sub: stored.userId, email: stored.user.email, kind: stored.user.kind },
+      { sub: user.id, email: user.email, kind: user.kind },
       context,
     );
-    return { ...tokens, userId: stored.userId };
+    return { ...tokens, userId: user.id };
   }
 
   async revoke(refreshToken: string): Promise<void> {
-    await this.prisma.refreshToken.updateMany({
-      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await this.refreshTokens.revokeByHash(hashToken(refreshToken), new Date());
   }
 
   async revokeAllForUser(userId: string): Promise<void> {
-    await this.prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await this.refreshTokens.revokeAllForUser(userId, new Date());
   }
 }
 

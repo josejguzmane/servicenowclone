@@ -17,8 +17,8 @@
     "test": "pnpm -r test",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
-    "db:migrate": "pnpm --filter @servicedesk/api db:migrate",
-    "db:seed": "pnpm --filter @servicedesk/api db:seed"
+    "seed:build": "pnpm --filter @servicedesk/api seed:build",
+    "seed:reset": "rm -f apps/api/data/servicedesk.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",

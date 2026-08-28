@@ -1,9 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Actor } from '@servicedesk/shared';
 import { CurrentUser, RequirePermissions } from '../common/decorators';
-import { PrismaService } from '../prisma/prisma.service';
+import { USER_REPOSITORY, type UserRepository } from '../storage/repositories';
 
 class UserSearchDto {
   @IsOptional()
@@ -15,7 +15,7 @@ class UserSearchDto {
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(USER_REPOSITORY) private readonly users: UserRepository) {}
 
   /**
    * Directory lookup for assignment pickers. Staff only; external contacts
@@ -24,23 +24,19 @@ export class UsersController {
   @Get()
   @RequirePermissions('user.read')
   async search(@Query() query: UserSearchDto, @CurrentUser() actor: Actor) {
-    const term = query.q?.trim();
-    return this.prisma.user.findMany({
-      where: {
-        isActive: true,
-        ...(actor.permissions.includes('user.manage') ? {} : { kind: 'internal' }),
-        ...(term
-          ? {
-              OR: [
-                { name: { contains: term, mode: 'insensitive' as const } },
-                { email: { contains: term, mode: 'insensitive' as const } },
-              ],
-            }
-          : {}),
-      },
-      select: { id: true, name: true, email: true, kind: true, department: true },
-      orderBy: { name: 'asc' },
-      take: 25,
+    const matches = await this.users.search({
+      term: query.q?.trim(),
+      // Only user administrators may see external contacts in the directory.
+      kind: actor.permissions.includes('user.manage') ? undefined : 'internal',
+      limit: 25,
     });
+
+    return matches.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      kind: user.kind,
+      department: user.department,
+    }));
   }
 }
