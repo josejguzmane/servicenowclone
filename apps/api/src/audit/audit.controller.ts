@@ -1,9 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { RequirePermissions } from '../common/decorators';
-import { PrismaService } from '../prisma/prisma.service';
+import { AUDIT_REPOSITORY, type AuditRepository } from '../storage/repositories';
 
 class AuditQueryDto {
   @IsOptional()
@@ -33,26 +33,17 @@ class AuditQueryDto {
 @ApiTags('audit')
 @Controller('audit')
 export class AuditController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository) {}
 
   @Get()
   @RequirePermissions('audit.read')
   async list(@Query() query: AuditQueryDto) {
-    const limit = query.limit ?? 50;
-    const rows = await this.prisma.auditLog.findMany({
-      where: {
-        entityType: query.entityType,
-        entityId: query.entityId,
-        actorId: query.actorId,
-      },
-      orderBy: { occurredAt: 'desc' },
-      take: limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      include: { actor: { select: { id: true, name: true, email: true } } },
+    return this.audit.list({
+      entityType: query.entityType,
+      entityId: query.entityId,
+      actorId: query.actorId,
+      limit: query.limit ?? 50,
+      cursor: query.cursor,
     });
-
-    const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    return { items, nextCursor: hasMore ? items[items.length - 1]?.id : null };
   }
 }

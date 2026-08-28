@@ -1,29 +1,24 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { permissionsForRoles, type Actor, type RoleKey } from '@servicedesk/shared';
-import { PrismaService } from '../prisma/prisma.service';
+import { USER_REPOSITORY, type UserRepository } from '../storage/repositories';
 
 @Injectable()
 export class ActorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(USER_REPOSITORY) private readonly users: UserRepository) {}
 
   /**
-   * Builds the request principal from the database on every request so role or
-   * group changes take effect without waiting for the access token to expire.
+   * Builds the request principal from storage on every request so role or group
+   * changes take effect without waiting for the access token to expire.
    */
   async load(userId: string): Promise<Actor> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        roles: { include: { role: true } },
-        groupMemberships: true,
-      },
-    });
+    const record = await this.users.findWithAccess(userId);
 
-    if (!user || !user.isActive) {
+    if (!record || !record.user.isActive) {
       throw new UnauthorizedException('User is not active');
     }
 
-    const roles = user.roles.map((assignment) => assignment.role.key as RoleKey);
+    const { user, roles, memberships } = record;
+    const roleKeys = roles.map((role) => role.key as RoleKey);
 
     return {
       userId: user.id,
@@ -32,10 +27,10 @@ export class ActorService {
       kind: user.kind,
       customerAccountId: user.customerAccountId,
       isAccountAdmin: user.isAccountAdmin,
-      roles,
-      permissions: permissionsForRoles(roles),
-      groupIds: user.groupMemberships.map((membership) => membership.groupId),
-      leadGroupIds: user.groupMemberships
+      roles: roleKeys,
+      permissions: permissionsForRoles(roleKeys),
+      groupIds: memberships.map((membership) => membership.groupId),
+      leadGroupIds: memberships
         .filter((membership) => membership.isLead)
         .map((membership) => membership.groupId),
     };

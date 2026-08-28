@@ -8,3 +8,7 @@ coverage
 .DS_Store
 .turbo
 apps/api/generated
+
+# Runtime data file (created from data/seed.json on first boot); the seed itself is tracked.
+apps/api/data/*
+!apps/api/data/seed.json

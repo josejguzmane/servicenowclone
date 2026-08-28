@@ -1,0 +1,330 @@
+{
+  "customerAccounts": [
+    {
+      "id": "00000000-0000-4000-8000-000000000501",
+      "name": "Acme Corp",
+      "domain": "acme.example",
+      "isActive": true,
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-000000000301",
+      "email": "admin@example.com",
+      "name": "Ada Admin",
+      "kind": "internal",
+      "customerAccountId": null,
+      "isAccountAdmin": false,
+      "department": null,
+      "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c2VydmljZWRlc2tzZWVkMA$h5IXCtORSXSNQr4lJ9TZkVUR/ozdjnN7RbEIeDkDLpQ",
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000302",
+      "email": "lead@example.com",
+      "name": "Leo Lead",
+      "kind": "internal",
+      "customerAccountId": null,
+      "isAccountAdmin": false,
+      "department": null,
+      "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c2VydmljZWRlc2tzZWVkMA$h5IXCtORSXSNQr4lJ9TZkVUR/ozdjnN7RbEIeDkDLpQ",
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000303",
+      "email": "agent@example.com",
+      "name": "Sam Support",
+      "kind": "internal",
+      "customerAccountId": null,
+      "isAccountAdmin": false,
+      "department": null,
+      "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c2VydmljZWRlc2tzZWVkMA$h5IXCtORSXSNQr4lJ9TZkVUR/ozdjnN7RbEIeDkDLpQ",
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000304",
+      "email": "employee@example.com",
+      "name": "Erin Employee",
+      "kind": "internal",
+      "customerAccountId": null,
+      "isAccountAdmin": false,
+      "department": null,
+      "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c2VydmljZWRlc2tzZWVkMA$h5IXCtORSXSNQr4lJ9TZkVUR/ozdjnN7RbEIeDkDLpQ",
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000305",
+      "email": "customer@acme.example",
+      "name": "Cara Customer",
+      "kind": "external",
+      "customerAccountId": "00000000-0000-4000-8000-000000000501",
+      "isAccountAdmin": true,
+      "department": null,
+      "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c2VydmljZWRlc2tzZWVkMA$h5IXCtORSXSNQr4lJ9TZkVUR/ozdjnN7RbEIeDkDLpQ",
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    }
+  ],
+  "roles": [
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "key": "end_user",
+      "name": "End User",
+      "description": "Requester: own tickets only"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "key": "agent",
+      "name": "Support Engineer",
+      "description": "Works tickets in their groups"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000103",
+      "key": "team_lead",
+      "name": "Team Lead",
+      "description": "Assigns, overrides, reports on groups"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000104",
+      "key": "admin",
+      "name": "Administrator",
+      "description": "Full configuration access"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000105",
+      "key": "auditor",
+      "name": "Auditor",
+      "description": "Read-only access including the audit log"
+    }
+  ],
+  "userRoles": [
+    {
+      "userId": "00000000-0000-4000-8000-000000000301",
+      "roleId": "00000000-0000-4000-8000-000000000104"
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000302",
+      "roleId": "00000000-0000-4000-8000-000000000103"
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000303",
+      "roleId": "00000000-0000-4000-8000-000000000102"
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000304",
+      "roleId": "00000000-0000-4000-8000-000000000101"
+    },
+    {
+      "userId": "00000000-0000-4000-8000-000000000305",
+      "roleId": "00000000-0000-4000-8000-000000000101"
+    }
+  ],
+  "groups": [
+    {
+      "id": "00000000-0000-4000-8000-000000000201",
+      "key": "service-desk",
+      "name": "Service Desk",
+      "description": "First line support",
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000202",
+      "key": "infrastructure",
+      "name": "Infrastructure",
+      "description": "Second line: networks, servers, storage",
+      "isActive": true
+    }
+  ],
+  "groupMembers": [
+    {
+      "groupId": "00000000-0000-4000-8000-000000000201",
+      "userId": "00000000-0000-4000-8000-000000000302",
+      "isLead": true
+    },
+    {
+      "groupId": "00000000-0000-4000-8000-000000000201",
+      "userId": "00000000-0000-4000-8000-000000000303",
+      "isLead": false
+    },
+    {
+      "groupId": "00000000-0000-4000-8000-000000000202",
+      "userId": "00000000-0000-4000-8000-000000000302",
+      "isLead": true
+    }
+  ],
+  "refreshTokens": [],
+  "categories": [
+    {
+      "id": "00000000-0000-4000-8000-000000000401",
+      "key": "hardware",
+      "name": "Hardware",
+      "parentId": null,
+      "defaultGroupId": "00000000-0000-4000-8000-000000000201",
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000402",
+      "key": "software",
+      "name": "Software",
+      "parentId": null,
+      "defaultGroupId": "00000000-0000-4000-8000-000000000201",
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000403",
+      "key": "network",
+      "name": "Network",
+      "parentId": null,
+      "defaultGroupId": "00000000-0000-4000-8000-000000000202",
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000404",
+      "key": "access-accounts",
+      "name": "Access & Accounts",
+      "parentId": null,
+      "defaultGroupId": "00000000-0000-4000-8000-000000000201",
+      "isActive": true
+    }
+  ],
+  "catalogItems": [
+    {
+      "id": "00000000-0000-4000-8000-000000000601",
+      "key": "new-laptop",
+      "name": "New laptop",
+      "description": "Request a replacement or additional laptop",
+      "categoryId": "00000000-0000-4000-8000-000000000401",
+      "fulfilmentGroupId": "00000000-0000-4000-8000-000000000201",
+      "isActive": true,
+      "approvalChain": [
+        {
+          "sequence": 1,
+          "approverGroupId": "00000000-0000-4000-8000-000000000201"
+        }
+      ],
+      "formSchema": {
+        "type": "object",
+        "required": [
+          "model",
+          "justification"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "enum": [
+              "Standard",
+              "Developer",
+              "Design"
+            ]
+          },
+          "justification": {
+            "type": "string",
+            "title": "Business justification",
+            "maxLength": 500
+          },
+          "neededBy": {
+            "type": "string",
+            "title": "Needed by",
+            "format": "date"
+          }
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000602",
+      "key": "software-licence",
+      "name": "Software licence",
+      "description": "Request a licence for approved software",
+      "categoryId": "00000000-0000-4000-8000-000000000402",
+      "fulfilmentGroupId": "00000000-0000-4000-8000-000000000201",
+      "isActive": true,
+      "approvalChain": [
+        {
+          "sequence": 1,
+          "approverGroupId": "00000000-0000-4000-8000-000000000201"
+        }
+      ],
+      "formSchema": {
+        "type": "object",
+        "required": [
+          "product"
+        ],
+        "properties": {
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "seats": {
+            "type": "integer",
+            "title": "Seats",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      }
+    }
+  ],
+  "slaPolicies": [
+    {
+      "id": "00000000-0000-4000-8000-000000000701",
+      "key": "p1",
+      "name": "P1 - Critical",
+      "priority": "p1",
+      "respondWithinMinutes": 15,
+      "resolveWithinMinutes": 240,
+      "businessHoursId": null,
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000702",
+      "key": "p2",
+      "name": "P2 - High",
+      "priority": "p2",
+      "respondWithinMinutes": 60,
+      "resolveWithinMinutes": 480,
+      "businessHoursId": null,
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000703",
+      "key": "p3",
+      "name": "P3 - Normal",
+      "priority": "p3",
+      "respondWithinMinutes": 240,
+      "resolveWithinMinutes": 2400,
+      "businessHoursId": null,
+      "isActive": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000704",
+      "key": "p4",
+      "name": "P4 - Low",
+      "priority": "p4",
+      "respondWithinMinutes": 480,
+      "resolveWithinMinutes": 4800,
+      "businessHoursId": null,
+      "isActive": true
+    }
+  ],
+  "tickets": [],
+  "comments": [],
+  "approvalSteps": [],
+  "auditLogs": [],
+  "ticketSequence": {}
+}

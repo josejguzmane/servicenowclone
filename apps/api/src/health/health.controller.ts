@@ -1,12 +1,12 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators';
-import { PrismaService } from '../prisma/prisma.service';
+import { DATA_STORE, type DataStore } from '../storage/repositories';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(DATA_STORE) private readonly store: DataStore) {}
 
   @Public()
   @Get('live')
@@ -16,12 +16,12 @@ export class HealthController {
 
   @Public()
   @Get('ready')
-  async ready(): Promise<{ status: string; database: string }> {
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      return { status: 'ok', database: 'up' };
-    } catch {
-      return { status: 'degraded', database: 'down' };
-    }
+  async ready(): Promise<{ status: string; storage: string; driver: string }> {
+    const healthy = await this.store.isHealthy();
+    return {
+      status: healthy ? 'ok' : 'degraded',
+      storage: healthy ? 'up' : 'down',
+      driver: this.store.driver,
+    };
   }
 }

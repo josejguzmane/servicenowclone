@@ -6,18 +6,12 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "lint": "eslint src scripts",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
-    "postinstall": "prisma generate"
-  },
-  "prisma": {
-    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
+    "seed:build": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/build-seed.ts",
+    "db:validate": "prisma validate"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.7",
@@ -27,7 +21,6 @@
     "@nestjs/platform-express": "^10.4.7",
     "@nestjs/swagger": "^7.4.2",
     "@nestjs/terminus": "^10.2.3",
-    "@prisma/client": "^5.22.0",
     "@servicedesk/shared": "workspace:*",
     "argon2": "^0.41.1",
     "class-transformer": "^0.5.1",

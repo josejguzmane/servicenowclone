@@ -1,8 +1,12 @@
 name: servicedesk
 
 services:
+  # Not started by default: the app currently runs on the JSON document store.
+  # Bring it up with `docker compose --profile database up -d` when the
+  # database driver is enabled.
   postgres:
     image: postgres:16-alpine
+    profiles: ['database']
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-servicedesk}

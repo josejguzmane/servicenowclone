@@ -9,13 +9,13 @@ import { PermissionsGuard } from './auth/permissions.guard';
 import { AuthzModule } from './authz/authz.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { HealthController } from './health/health.controller';
-import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [loadConfiguration], cache: true }),
-    PrismaModule,
+    StorageModule,
     AuthzModule,
     AuditModule,
     UsersModule,

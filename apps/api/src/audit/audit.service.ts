@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { AuditAction, Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { AuditAction } from '../storage/entities';
+import { AUDIT_REPOSITORY, type AuditRepository, type AuditRow } from '../storage/repositories';
 
 export interface AuditContext {
   actorId?: string | null;
@@ -27,15 +27,12 @@ const REDACTED_FIELDS = new Set(['passwordHash', 'password', 'tokenHash', 'refre
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(AUDIT_REPOSITORY) private readonly repository: AuditRepository,
+  ) {}
 
-  /**
-   * Writes audit rows. Pass a transaction client to keep the trail in the same
-   * transaction as the mutation it describes.
-   */
-  async record(entries: AuditEntry | AuditEntry[], tx?: Prisma.TransactionClient): Promise<void> {
-    const client = tx ?? this.prisma;
-    const rows = (Array.isArray(entries) ? entries : [entries]).map((entry) => ({
+  async record(entries: AuditEntry | AuditEntry[]): Promise<void> {
+    const rows: AuditRow[] = (Array.isArray(entries) ? entries : [entries]).map((entry) => ({
       entityType: entry.entityType,
       entityId: entry.entityId,
       actorId: entry.actorId ?? null,
@@ -50,8 +47,7 @@ export class AuditService {
       userAgent: entry.userAgent ?? null,
     }));
 
-    if (rows.length === 0) return;
-    await client.auditLog.createMany({ data: rows });
+    await this.repository.append(rows);
   }
 
   /**
@@ -64,7 +60,6 @@ export class AuditService {
     before: Record<string, unknown>,
     after: Record<string, unknown>,
     context: AuditContext,
-    tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const entries: AuditEntry[] = [];
     for (const [field, newValue] of Object.entries(after)) {
@@ -72,10 +67,10 @@ export class AuditService {
       if (equalish(oldValue, newValue)) continue;
       entries.push({ ...context, entityType, entityId, action: 'update', field, oldValue, newValue });
     }
-    await this.record(entries, tx);
+    await this.record(entries);
   }
 
-  /** Audit failures must never swallow the user-facing operation silently. */
+  /** Audit failures must never take down the user-facing operation. */
   async recordSafely(entries: AuditEntry | AuditEntry[]): Promise<void> {
     try {
       await this.record(entries);
