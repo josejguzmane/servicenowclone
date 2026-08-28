@@ -1,0 +1,701 @@
+// ServiceDesk data model.
+// Phase 0 ships the full core schema so later phases add services, not migrations
+// that reshape existing tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity, roles and tenancy-by-account
+// ---------------------------------------------------------------------------
+
+enum UserKind {
+  internal
+  external
+}
+
+model CustomerAccount {
+  id           String   @id @default(uuid())
+  name         String
+  domain       String?  @unique
+  isActive     Boolean  @default(true)
+  brandingJson Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users   User[]
+  tickets Ticket[]
+
+  @@map("customer_accounts")
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  name              String
+  kind              UserKind  @default(internal)
+  customerAccountId String?
+  isAccountAdmin    Boolean   @default(false)
+  department        String?
+  managerId         String?
+  timezone          String    @default("UTC")
+  locale            String    @default("en")
+  isActive          Boolean   @default(true)
+  // Local credentials: external contacts always, internal users only when no IdP.
+  passwordHash      String?
+  emailVerifiedAt   DateTime?
+  // Subject claim when the user authenticates through the on-prem IdP.
+  authSubject       String?   @unique
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customerAccount CustomerAccount? @relation(fields: [customerAccountId], references: [id])
+  manager         User?            @relation("UserManager", fields: [managerId], references: [id])
+  reports         User[]           @relation("UserManager")
+
+  roles            UserRole[]
+  groupMemberships GroupMember[]
+  refreshTokens    RefreshToken[]
+
+  requestedTickets Ticket[] @relation("TicketRequester")
+  onBehalfTickets  Ticket[] @relation("TicketOnBehalfOf")
+  assignedTickets  Ticket[] @relation("TicketAssignee")
+  comments         Comment[]
+  watching         TicketWatcher[]
+  auditEntries     AuditLog[]
+  notifications    Notification[]
+  approvalSteps    ApprovalStep[]  @relation("ApprovalApprover")
+
+  @@index([customerAccountId])
+  @@index([kind, isActive])
+  @@map("users")
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  key         String     @unique
+  name        String
+  description String?
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Group {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  businessHoursId String?
+  defaultAssignee String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  businessHours BusinessHours? @relation(fields: [businessHoursId], references: [id])
+  members       GroupMember[]
+  tickets       Ticket[]
+  categories    Category[]
+  catalogItems  CatalogItem[]
+  approvalSteps ApprovalStep[] @relation("ApprovalGroup")
+
+  @@map("groups")
+}
+
+model GroupMember {
+  groupId String
+  userId  String
+  isLead  Boolean @default(false)
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@map("group_members")
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy and catalog
+// ---------------------------------------------------------------------------
+
+enum Impact {
+  low
+  medium
+  high
+}
+
+enum Urgency {
+  low
+  medium
+  high
+}
+
+enum Priority {
+  p1
+  p2
+  p3
+  p4
+}
+
+model Category {
+  id              String   @id @default(uuid())
+  parentId        String?
+  name            String
+  defaultGroupId  String?
+  defaultImpact   Impact   @default(medium)
+  defaultUrgency  Urgency  @default(medium)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children     Category[]    @relation("CategoryTree")
+  defaultGroup Group?        @relation(fields: [defaultGroupId], references: [id])
+  tickets      Ticket[]
+  catalogItems CatalogItem[]
+  kbArticles   KbArticle[]
+
+  @@unique([parentId, name])
+  @@map("categories")
+}
+
+model CatalogItem {
+  id               String   @id @default(uuid())
+  name             String
+  slug             String   @unique
+  description      String?
+  categoryId       String?
+  // JSON Schema describing the request form; validated on write.
+  formSchemaJson   Json     @default("{}")
+  defaultGroupId   String?
+  slaPolicyId      String?
+  approvalRequired Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category     Category?  @relation(fields: [categoryId], references: [id])
+  defaultGroup Group?     @relation(fields: [defaultGroupId], references: [id])
+  slaPolicy    SlaPolicy? @relation(fields: [slaPolicyId], references: [id])
+  tickets      Ticket[]
+
+  @@map("catalog_items")
+}
+
+// ---------------------------------------------------------------------------
+// Tickets
+// ---------------------------------------------------------------------------
+
+enum TicketType {
+  incident
+  service_request
+}
+
+enum TicketStatus {
+  new
+  pending_approval
+  triaged
+  assigned
+  in_progress
+  pending
+  resolved
+  closed
+  cancelled
+}
+
+enum PendingReason {
+  customer
+  vendor
+  approval
+}
+
+enum ApprovalState {
+  not_required
+  pending
+  approved
+  rejected
+}
+
+enum ContactChannel {
+  portal
+  email
+  api
+  phone
+}
+
+model Ticket {
+  id                String         @id @default(uuid())
+  number            String         @unique
+  type              TicketType     @default(incident)
+  title             String
+  description       String
+  requesterId       String
+  onBehalfOfId      String?
+  // Denormalized from the requester so external scoping is one indexed predicate.
+  customerAccountId String?
+  contactChannel    ContactChannel @default(portal)
+
+  categoryId    String?
+  catalogItemId String?
+  formDataJson  Json?
+
+  impact           Impact   @default(medium)
+  urgency          Urgency  @default(medium)
+  priority         Priority @default(p3)
+  priorityOverride Boolean  @default(false)
+
+  status        TicketStatus   @default(new)
+  pendingReason PendingReason?
+  approvalState ApprovalState  @default(not_required)
+
+  assignmentGroupId String?
+  assigneeId        String?
+
+  slaPolicyId    String?
+  responseDueAt  DateTime?
+  resolveDueAt   DateTime?
+  firstResponseAt DateTime?
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  reopenedCount  Int       @default(0)
+
+  resolutionCode  String?
+  resolutionNotes String?
+  csatScore       Int?
+  csatComment     String?
+
+  parentTicketId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  requester       User             @relation("TicketRequester", fields: [requesterId], references: [id])
+  onBehalfOf      User?            @relation("TicketOnBehalfOf", fields: [onBehalfOfId], references: [id])
+  customerAccount CustomerAccount? @relation(fields: [customerAccountId], references: [id])
+  category        Category?        @relation(fields: [categoryId], references: [id])
+  catalogItem     CatalogItem?     @relation(fields: [catalogItemId], references: [id])
+  assignmentGroup Group?           @relation(fields: [assignmentGroupId], references: [id])
+  assignee        User?            @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  slaPolicy       SlaPolicy?       @relation(fields: [slaPolicyId], references: [id])
+  parentTicket    Ticket?          @relation("TicketTree", fields: [parentTicketId], references: [id])
+  childTickets    Ticket[]         @relation("TicketTree")
+
+  comments       Comment[]
+  attachments    Attachment[]
+  watchers       TicketWatcher[]
+  tags           TicketTag[]
+  slaInstances   SlaInstance[]
+  escalations    EscalationEvent[]
+  approvalSteps  ApprovalStep[]
+  notifications  Notification[]
+  inboundEmails  InboundEmail[]
+
+  @@index([assignmentGroupId, status, resolveDueAt])
+  @@index([customerAccountId, status])
+  @@index([requesterId, createdAt])
+  @@index([assigneeId, status])
+  @@index([status, priority])
+  @@map("tickets")
+}
+
+model TicketSequence {
+  prefix String @id
+  value  Int    @default(0)
+
+  @@map("ticket_sequences")
+}
+
+enum CommentVisibility {
+  public_reply
+  work_note
+  system
+}
+
+model Comment {
+  id         String            @id @default(uuid())
+  ticketId   String
+  authorId   String?
+  body       String
+  visibility CommentVisibility @default(public_reply)
+  createdAt  DateTime          @default(now())
+
+  ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User?        @relation(fields: [authorId], references: [id])
+  attachments Attachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("comments")
+}
+
+model Attachment {
+  id         String    @id @default(uuid())
+  ticketId   String
+  commentId  String?
+  filename   String
+  size       Int
+  mime       String
+  storageKey String
+  scannedAt  DateTime?
+  uploadedBy String?
+  createdAt  DateTime  @default(now())
+
+  ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("attachments")
+}
+
+model TicketWatcher {
+  ticketId String
+  userId   String
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, userId])
+  @@map("ticket_watchers")
+}
+
+model TicketTag {
+  ticketId String
+  tag      String
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tag])
+  @@map("ticket_tags")
+}
+
+// ---------------------------------------------------------------------------
+// SLA, escalation, approvals
+// ---------------------------------------------------------------------------
+
+model BusinessHours {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  timezone     String   @default("UTC")
+  // [{ day: 1, start: "09:00", end: "17:00" }, ...]
+  windowsJson  Json
+  holidaysJson Json     @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  groups      Group[]
+  slaPolicies SlaPolicy[]
+
+  @@map("business_hours")
+}
+
+model SlaPolicy {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  // Condition document matched against the ticket, highest precedence wins.
+  appliesToJson   Json     @default("{}")
+  precedence      Int      @default(100)
+  responseMinutes Int
+  resolveMinutes  Int
+  businessHoursId String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  businessHours BusinessHours? @relation(fields: [businessHoursId], references: [id])
+  tickets       Ticket[]
+  instances     SlaInstance[]
+  catalogItems  CatalogItem[]
+
+  @@map("sla_policies")
+}
+
+enum SlaKind {
+  response
+  resolve
+}
+
+enum SlaState {
+  running
+  paused
+  completed
+  breached
+}
+
+model SlaInstance {
+  id            String    @id @default(uuid())
+  ticketId      String
+  policyId      String
+  kind          SlaKind
+  state         SlaState  @default(running)
+  targetAt      DateTime
+  pausedMsTotal Int       @default(0)
+  pausedAt      DateTime?
+  breachedAt    DateTime?
+  completedAt   DateTime?
+  lastAlertPct  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ticket Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  policy SlaPolicy @relation(fields: [policyId], references: [id])
+
+  @@unique([ticketId, kind])
+  @@index([state, targetAt])
+  @@map("sla_instances")
+}
+
+model EscalationRule {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  triggerJson  Json
+  thresholdPct Int?
+  actionsJson  Json
+  level        Int      @default(1)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events EscalationEvent[]
+
+  @@map("escalation_rules")
+}
+
+model EscalationEvent {
+  id            String   @id @default(uuid())
+  ticketId      String
+  ruleId        String?
+  level         Int      @default(1)
+  reason        String?
+  triggeredById String?
+  notifiedJson  Json     @default("[]")
+  triggeredAt   DateTime @default(now())
+
+  ticket Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  rule   EscalationRule? @relation(fields: [ruleId], references: [id])
+
+  @@unique([ticketId, ruleId, level])
+  @@index([ticketId])
+  @@map("escalation_events")
+}
+
+enum ApprovalStepState {
+  pending
+  approved
+  rejected
+  skipped
+}
+
+enum ApprovalRule {
+  any_of
+  all_of
+}
+
+model ApprovalStep {
+  id              String            @id @default(uuid())
+  ticketId        String
+  sequence        Int
+  approverId      String?
+  approverGroupId String?
+  rule            ApprovalRule      @default(any_of)
+  state           ApprovalStepState @default(pending)
+  decidedAt       DateTime?
+  decidedBy       String?
+  comment         String?
+  remindedAt      DateTime?
+  createdAt       DateTime          @default(now())
+
+  ticket        Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  approver      User?  @relation("ApprovalApprover", fields: [approverId], references: [id])
+  approverGroup Group? @relation("ApprovalGroup", fields: [approverGroupId], references: [id])
+
+  @@index([ticketId, sequence])
+  @@map("approval_steps")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications and inbound email
+// ---------------------------------------------------------------------------
+
+enum NotificationChannel {
+  in_app
+  email
+  webhook
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+  suppressed
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  userId      String
+  ticketId    String?
+  channel     NotificationChannel
+  templateKey String
+  payloadJson Json                @default("{}")
+  status      NotificationStatus  @default(queued)
+  dedupeKey   String?             @unique
+  error       String?
+  sentAt      DateTime?
+  readAt      DateTime?
+  createdAt   DateTime            @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  userId   String
+  eventKey String
+  channel  NotificationChannel
+  enabled  Boolean             @default(true)
+
+  @@id([userId, eventKey, channel])
+  @@map("notification_preferences")
+}
+
+enum InboundEmailStatus {
+  received
+  processed
+  ignored
+  failed
+}
+
+model InboundEmail {
+  id                String             @id @default(uuid())
+  providerMessageId String             @unique
+  fromAddr          String
+  toAddr            String
+  subject           String?
+  ticketId          String?
+  commentId         String?
+  rawStorageKey     String?
+  status            InboundEmailStatus @default(received)
+  error             String?
+  receivedAt        DateTime           @default(now())
+  parsedAt          DateTime?
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([status, receivedAt])
+  @@map("inbound_emails")
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge base, saved views, audit
+// ---------------------------------------------------------------------------
+
+enum KbStatus {
+  draft
+  published
+  retired
+}
+
+model KbArticle {
+  id           String   @id @default(uuid())
+  title        String
+  slug         String   @unique
+  body         String
+  categoryId   String?
+  status       KbStatus @default(draft)
+  authorId     String?
+  // Published articles are visible to external contacts as well.
+  isPublic     Boolean  @default(true)
+  views        Int      @default(0)
+  helpfulCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@map("kb_articles")
+}
+
+model SavedView {
+  id          String   @id @default(uuid())
+  ownerId     String?
+  name        String
+  filterJson  Json     @default("{}")
+  columnsJson Json     @default("[]")
+  isShared    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("saved_views")
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+  login
+  logout
+  login_failed
+  read_sensitive
+}
+
+/// Append-only. The application database role is granted INSERT/SELECT only
+/// (see prisma/sql/audit_append_only.sql).
+model AuditLog {
+  id          String      @id @default(uuid())
+  entityType  String
+  entityId    String
+  actorId     String?
+  action      AuditAction
+  field       String?
+  oldValue    String?
+  newValue    String?
+  reason      String?
+  source      String      @default("ui")
+  requestId   String?
+  ip          String?
+  userAgent   String?
+  occurredAt  DateTime    @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@map("audit_logs")
+}
